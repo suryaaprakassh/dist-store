@@ -4,7 +4,7 @@ import "net"
 
 // Represents anything that is transferred
 // between nodes in a network
-type Message struct {
+type RPC struct {
 	From    net.Addr
 	Payload []byte
 }
