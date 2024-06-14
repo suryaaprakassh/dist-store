@@ -13,6 +13,11 @@ type TcpPeer struct {
 	outBound bool
 }
 
+// handles the peer cleanUp logic
+func (p *TcpPeer) Close() error {
+	return p.conn.Close()
+}
+
 func NewTcpPeer(conn net.Conn, outbound bool) *TcpPeer {
 	return &TcpPeer{
 		conn:     conn,
@@ -20,27 +25,33 @@ func NewTcpPeer(conn net.Conn, outbound bool) *TcpPeer {
 	}
 }
 
+type TcpTransportConfig struct {
+	ListenAddr string
+	ShakeHands HandShakeFunc
+	Decoder    Decoder
+}
+
 type TcpTransport struct {
-	listenAddr string
-	listener   net.Listener
+	TcpTransportConfig
+	listener net.Listener
 
 	mu    sync.RWMutex
 	peers map[net.Addr]Peer
 }
 
-func NewTcpTransport(listenAddr string) *TcpTransport {
+func NewTcpTransport(config TcpTransportConfig) *TcpTransport {
 	return &TcpTransport{
-		listenAddr: listenAddr,
+		TcpTransportConfig: config,
 	}
 }
 
 func (t *TcpTransport) ListenAndAccept() error {
 	var err error
-	t.listener, err = net.Listen("tcp", t.listenAddr)
+	t.listener, err = net.Listen("tcp", t.ListenAddr)
 	if err != nil {
 		return err
 	}
-	go t.startAcceptLoop();
+	go t.startAcceptLoop()
 	return nil
 }
 
@@ -57,5 +68,26 @@ func (t *TcpTransport) startAcceptLoop() {
 
 func (t *TcpTransport) handleConn(conn net.Conn) {
 	peer := NewTcpPeer(conn, true)
+
+	if err := t.ShakeHands(peer); err != nil {
+		slog.Error("Error in Handshake", err)
+		peer.Close()
+		return
+	}
 	slog.Info("New Connection", "Addr", peer.conn.LocalAddr().String())
+
+	var msg Message
+	msg.From = conn.RemoteAddr()
+
+	//message read loop
+	for {
+		if err := t.Decoder.Decode(peer.conn, &msg); err != nil {
+			slog.Error("Error in Decoding", err)
+
+			//TODO: fix abrubt connection close
+			peer.Close()
+			return
+		}
+		slog.Info("New", "Message", string(msg.Payload))
+	}
 }
