@@ -61,6 +61,8 @@ func (p *PathKey) firstParentDir() string {
 }
 
 type StorageOpts struct {
+	//path to the root dir of the store
+	RootDir string
 	PathTransformFunc
 }
 
@@ -71,13 +73,28 @@ type Store struct {
 }
 
 func NewStore(opts StorageOpts) *Store {
+	if opts.PathTransformFunc == nil {
+		opts.PathTransformFunc = DefaultPathTransform
+	}
+
+	//default root dir of the store
+	if len(opts.RootDir) == 0 {
+		opts.RootDir = "dist-store"
+	}
+
 	return &Store{
 		StorageOpts: opts,
 	}
 }
 
-func (s *Store) Has(key string) bool {
+func (s *Store) getPathWithRoot(key string) PathKey {
 	pathKey := s.PathTransformFunc(key)
+	pathKey.Path = s.RootDir + "/" + pathKey.Path
+	return pathKey
+}
+
+func (s *Store) Has(key string) bool {
+	pathKey := s.getPathWithRoot(key)
 	_, err := os.Stat(pathKey.fileNameWithPath())
 	if err != nil {
 		return false
@@ -86,7 +103,7 @@ func (s *Store) Has(key string) bool {
 }
 
 func (s *Store) Delete(key string) error {
-	pathKey := s.PathTransformFunc(key)
+	pathKey := s.getPathWithRoot(key)
 
 	//NOTE: directories will also get removed
 	//check for any possible side effects
@@ -94,7 +111,7 @@ func (s *Store) Delete(key string) error {
 }
 
 func (s *Store) Write(key string, r io.Reader) error {
-	pathName := s.PathTransformFunc(key)
+	pathName := s.getPathWithRoot(key)
 
 	//TODO: check os permissions
 	if err := os.MkdirAll(pathName.Path, os.ModePerm); err != nil {
@@ -122,7 +139,7 @@ func (s *Store) Write(key string, r io.Reader) error {
 // function returns a reader with the contents of the file
 // If and only if file exists
 func (s *Store) Read(key string) (io.Reader, error) {
-	pathKey := s.PathTransformFunc(key)
+	pathKey := s.getPathWithRoot(key)
 	filePath := pathKey.fileNameWithPath()
 	file, err := os.Open(filePath)
 	if err != nil {
