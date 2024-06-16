@@ -32,10 +32,11 @@ func TestStore(t *testing.T) {
 
 	//Read
 	file, err := store.Read(key)
-	fileData ,err :=io.ReadAll(file)
-
-	assert.Nilf(t, err, "File with key %v should be read without errors", key)
 	assert.Nilf(t, err, "File with key %v should exist", key)
+
+	fileData ,err :=io.ReadAll(file)
+	assert.Nilf(t, err, "File with key %v should be read without errors", key)
+
 	assert.Equalf(t, data,fileData , "Contents of the file with key %v should be equal", key)
 
 	//Delete

@@ -2,32 +2,42 @@ package main
 
 import (
 	"dist-store/p2p"
-	"fmt"
 	"log"
 )
 
-func main() {
+func makeServer(listenAddr, root string, nodes ...string) *Server {
 	config := p2p.TcpTransportConfig{
-		ListenAddr: ":8080",
+		ListenAddr: listenAddr,
 		ShakeHands: p2p.DefaultHandShake,
 		Decoder:    p2p.DefaultDecoder{},
-		OnPeer: func(p p2p.Peer) error {
-			return fmt.Errorf("Failed on Peer")
-		},
+		//TODO: have a onpeer func
 	}
 
-	tr := p2p.NewTcpTransport(config)
+	transport := p2p.NewTcpTransport(config)
 
+	serverOpts := ServerOpts{
+		ListenAddr:        listenAddr,
+		StorageRoot:       root,
+		PathTransformFunc: CASPathTransformFunc,
+		Transport:         transport,
+		BootstrapNodes:    nodes,
+	}
+
+	s := NewServer(serverOpts)
+
+	//TODO: fix poor design implementation
+	transport.OnPeer = s.OnPeer
+
+	return s
+
+}
+
+func main() {
+	s1 := makeServer(":3000", "TestDir", "")
+	s2 := makeServer(":4000", "TestDir", ":3000")
 	go func() {
-		for {
-			msg := <-tr.Consume()
-			log.Printf("message: %v", msg)
-		}
+		log.Fatal(s1.Start())
 	}()
 
-	if err := tr.ListenAndAccept(); err != nil {
-		log.Fatalf("Error starting transport: %v", err.Error())
-	}
-
-	select {}
+	log.Fatal(s2.Start())
 }

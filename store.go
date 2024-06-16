@@ -107,7 +107,12 @@ func (s *Store) Delete(key string) error {
 
 	//NOTE: directories will also get removed
 	//check for any possible side effects
-	return os.RemoveAll(pathKey.firstParentDir())
+	err := os.RemoveAll(pathKey.firstParentDir())
+	if err != nil {
+		return err
+	}
+	slog.Info("Removed file", "key", key)
+	return nil
 }
 
 func (s *Store) Write(key string, r io.Reader) error {

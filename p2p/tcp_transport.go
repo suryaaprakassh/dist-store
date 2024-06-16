@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"log/slog"
 	"net"
 )
@@ -15,6 +16,16 @@ type TcpPeer struct {
 // handles the peer cleanUp logic
 func (p *TcpPeer) Close() error {
 	return p.conn.Close()
+}
+
+// handles the peer cleanUp logic
+func (p *TcpPeer) RemoteAddr() net.Addr {
+	return p.conn.RemoteAddr()
+}
+
+func (p *TcpPeer) Send(buf []byte) error {
+	_,err := p.conn.Write(buf)
+	return err  
 }
 
 func NewTcpPeer(conn net.Conn, outbound bool) *TcpPeer {
@@ -51,6 +62,8 @@ func (t *TcpTransport) ListenAndAccept() error {
 		return err
 	}
 	go t.startAcceptLoop()
+
+	slog.Info("Tcp Transport Listening", "On", t.ListenAddr)
 	return nil
 }
 
@@ -60,20 +73,42 @@ func (t *TcpTransport) Consume() <-chan RPC {
 	return t.rpcch
 }
 
+// implements the transport interface
+func (t *TcpTransport) Close() error {
+	close(t.rpcch)
+	return t.listener.Close()
+}
+
+// implements the transport interface
+func (t *TcpTransport) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	go t.handleConn(conn, true)
+
+	return nil
+}
+
 func (t *TcpTransport) startAcceptLoop() {
 	for {
 		conn, err := t.listener.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			slog.Info("Tcp Transport Closed")
+			return
+		}
 		if err != nil {
 			slog.Error("Tcp accept error", err)
 		}
 
-		go t.handleConn(conn)
+		go t.handleConn(conn, false)
 	}
 }
 
-func (t *TcpTransport) handleConn(conn net.Conn) {
+func (t *TcpTransport) handleConn(conn net.Conn, outbound bool) {
 	var err error
-	peer := NewTcpPeer(conn, true)
+	peer := NewTcpPeer(conn, outbound)
 
 	//clean up logic
 	defer func() {
@@ -91,13 +126,13 @@ func (t *TcpTransport) handleConn(conn net.Conn) {
 		}
 	}
 
-	slog.Info("New Connection", "Addr", peer.conn.LocalAddr().String())
+	// slog.Info("New Connection", "Addr", peer.conn.LocalAddr().String())
 
 	var msg RPC
 	msg.From = conn.RemoteAddr()
 	//message read loop
 	for {
-		err = t.Decoder.Decode(peer.conn, &msg);
+		err = t.Decoder.Decode(peer.conn, &msg)
 
 		//TODO: fix net.OpError
 		if err != nil {
