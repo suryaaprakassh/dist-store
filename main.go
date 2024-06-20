@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"dist-store/p2p"
 	"log"
+	"time"
 )
 
 func makeServer(listenAddr, root string, nodes ...string) *Server {
@@ -38,6 +40,16 @@ func main() {
 	go func() {
 		log.Fatal(s1.Start())
 	}()
+	time.Sleep(time.Second * 2)
+	go s2.Start()
+	time.Sleep(time.Second * 2)
 
-	log.Fatal(s2.Start())
+	data := bytes.NewReader([]byte("test data"))
+
+	err:=s2.StoreData("test",data)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+
+	select {}
 }

@@ -8,29 +8,20 @@ import (
 
 // Represents a node in tcp network
 type TcpPeer struct {
-	conn net.Conn
+	//directly embeded connection to the peer
+	net.Conn
 	// If dialed its outBound else its inbound conn
 	outBound bool
 }
 
-// handles the peer cleanUp logic
-func (p *TcpPeer) Close() error {
-	return p.conn.Close()
-}
-
-// handles the peer cleanUp logic
-func (p *TcpPeer) RemoteAddr() net.Addr {
-	return p.conn.RemoteAddr()
-}
-
 func (p *TcpPeer) Send(buf []byte) error {
-	_,err := p.conn.Write(buf)
-	return err  
+	_, err := p.Conn.Write(buf)
+	return err
 }
 
 func NewTcpPeer(conn net.Conn, outbound bool) *TcpPeer {
 	return &TcpPeer{
-		conn:     conn,
+		Conn:     conn,
 		outBound: outbound,
 	}
 }
@@ -132,7 +123,7 @@ func (t *TcpTransport) handleConn(conn net.Conn, outbound bool) {
 	msg.From = conn.RemoteAddr()
 	//message read loop
 	for {
-		err = t.Decoder.Decode(peer.conn, &msg)
+		err = t.Decoder.Decode(peer.Conn, &msg)
 
 		//TODO: fix net.OpError
 		if err != nil {
