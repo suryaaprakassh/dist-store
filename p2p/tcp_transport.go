@@ -19,6 +19,10 @@ func (p *TcpPeer) Send(buf []byte) error {
 	return err
 }
 
+func (p *TcpPeer) IsOutbound() bool {
+	return p.outBound
+}
+
 func NewTcpPeer(conn net.Conn, outbound bool) *TcpPeer {
 	return &TcpPeer{
 		Conn:     conn,
@@ -120,7 +124,6 @@ func (t *TcpTransport) handleConn(conn net.Conn, outbound bool) {
 	// slog.Info("New Connection", "Addr", peer.conn.LocalAddr().String())
 
 	var msg RPC
-	msg.From = conn.RemoteAddr()
 	//message read loop
 	for {
 		err = t.Decoder.Decode(peer.Conn, &msg)
@@ -129,6 +132,9 @@ func (t *TcpTransport) handleConn(conn net.Conn, outbound bool) {
 		if err != nil {
 			return
 		}
+	
+		msg.From=peer.RemoteAddr()
+
 		t.rpcch <- msg
 	}
 }

@@ -1,8 +1,16 @@
 package main
 
-// Payload represents anything
-// that is transferred between peers in a network
+type Action int
+
+const (
+	Save Action = iota
+	Delete
+)
+
+// is a type that is transferred between
+// nodes in a tcp network
 type Payload struct {
-	Key  string
-	Data []byte
+	Action Action
+	Key    string
+	Data   []byte
 }

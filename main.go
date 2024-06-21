@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dist-store/p2p"
 	"log"
+	"log/slog"
 	"time"
 )
 
@@ -31,12 +32,13 @@ func makeServer(listenAddr, root string, nodes ...string) *Server {
 	transport.OnPeer = s.OnPeer
 
 	return s
-
 }
 
 func main() {
-	s1 := makeServer(":3000", "TestDir", "")
-	s2 := makeServer(":4000", "TestDir", ":3000")
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
+	s1 := makeServer(":3000", ":3000_dir", "")
+	s2 := makeServer(":4000", ":4000_dir", ":3000")
 	go func() {
 		log.Fatal(s1.Start())
 	}()
@@ -46,7 +48,7 @@ func main() {
 
 	data := bytes.NewReader([]byte("test data"))
 
-	err:=s2.StoreData("test",data)
+	err := s2.StoreData("test", data)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

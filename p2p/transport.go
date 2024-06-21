@@ -5,6 +5,7 @@ import "net"
 // Represents the remote node
 type Peer interface {
 	Send([]byte) error
+	IsOutbound() bool
 	net.Conn
 }
 

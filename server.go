@@ -34,15 +34,14 @@ func (s *Server) loop() {
 	//TODO: have a defer func to do clean up
 	for {
 		select {
-		//TODO: make the message a generic 
 		case msg := <-s.Transport.Consume():
 			var p Payload
+			slog.Debug("transport consume", "msg", msg)
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&p); err != nil {
 				slog.Error("Error decoding", err)
-				return	
+				return
 			}
-			slog.Info("New file Received ", "data", p, "sender", msg.From.String())
-			if err :=s.handlePayload(&p); err != nil {
+			if err := s.handlePayload(&p); err != nil {
 				slog.Error("Error handling payload", err)
 			}
 		case <-s.quitch:
@@ -52,7 +51,15 @@ func (s *Server) loop() {
 }
 
 func (s *Server) handlePayload(p *Payload) error {
-	//handle the payload here
+	switch p.Action {
+	case Save:
+		s.StoreData(p.Key, bytes.NewReader(p.Data))
+	case Delete:
+	//TODO: delete a file
+	default:
+		slog.Warn("Unknown Request with ", "action", p.Action)
+	}
+
 	return nil
 }
 
@@ -73,14 +80,27 @@ func (s *Server) bootStrapNetwork() error {
 
 func (s *Server) Broadcast(p *Payload) error {
 	peers := []io.Writer{}
+
+	buf := new(bytes.Buffer)
+
 	for _, peer := range s.peer {
-		peers = append(peers, peer)
+		if peer.IsOutbound() {
+			peers = append(peers, peer)
+		}
 	}
 
 	//using the multi writer
 	mw := io.MultiWriter(peers...)
 
-	return gob.NewEncoder(mw).Encode(p)
+	err := gob.NewEncoder(buf).Encode(p)
+
+	if err != nil {
+		slog.Error("Error in broadcast", err)
+	}
+
+	gob.NewEncoder(mw).Encode(buf.Bytes())
+
+	return nil
 }
 
 func (s *Server) StoreData(key string, r io.Reader) error {
@@ -92,13 +112,16 @@ func (s *Server) StoreData(key string, r io.Reader) error {
 		return err
 	}
 
-	p := &Payload{
-		Key:  key,
-		Data: buf.Bytes(),
+	p := Payload{
+		Action: Save,
+		Key:    key,
+		Data:   buf.Bytes(),
 	}
 
+	slog.Debug("created payload", "payload", p)
+
 	//share stuff with other nodes
-	return s.Broadcast(p)
+	return s.Broadcast(&p)
 }
 
 func (s *Server) OnPeer(p p2p.Peer) error {
@@ -134,3 +157,8 @@ func NewServer(opts ServerOpts) *Server {
 		peer:       make(map[string]p2p.Peer),
 	}
 }
+
+// // for gob initialization
+// func init() {
+// 	gob.Register(StoreDataPayload{})
+// }
