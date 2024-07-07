@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"sync"
 )
 
 // Represents a node in tcp network
@@ -12,7 +13,12 @@ type TcpPeer struct {
 	net.Conn
 	// If dialed its outBound else its inbound conn
 	outBound bool
+
+	//used to stop the read loop for the file streaming
+	wg sync.WaitGroup
 }
+
+//Following functions Implements the peer interface
 
 func (p *TcpPeer) Send(buf []byte) error {
 	_, err := p.Conn.Write(buf)
@@ -21,6 +27,14 @@ func (p *TcpPeer) Send(buf []byte) error {
 
 func (p *TcpPeer) IsOutbound() bool {
 	return p.outBound
+}
+
+func (p *TcpPeer) StartStream() {
+	p.wg.Add(1)
+}
+
+func (p *TcpPeer) StopStream() {
+	p.wg.Done()
 }
 
 func NewTcpPeer(conn net.Conn, outbound bool) *TcpPeer {
@@ -132,9 +146,16 @@ func (t *TcpTransport) handleConn(conn net.Conn, outbound bool) {
 		if err != nil {
 			return
 		}
-	
-		msg.From=peer.RemoteAddr()
 
-		t.rpcch <- msg
+		msg.From = peer.RemoteAddr()
+
+		//blocks the read loop for the file stream
+		if msg.Stream {
+			peer.StartStream()
+		} else {
+			t.rpcch <- msg
+		}
+
+		peer.wg.Wait()
 	}
 }

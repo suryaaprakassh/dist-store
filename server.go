@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dist-store/p2p"
 	"encoding/gob"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -36,12 +37,12 @@ func (s *Server) loop() {
 		select {
 		case msg := <-s.Transport.Consume():
 			var p Payload
-			slog.Debug("transport consume", "msg", msg)
+			slog.Debug("RPC", "msg", msg)
 			if err := gob.NewDecoder(bytes.NewReader(msg.Payload)).Decode(&p); err != nil {
-				slog.Error("Error decoding", err)
+				slog.Error("Error decoding Payload", err)
 				return
 			}
-			if err := s.handlePayload(&p); err != nil {
+			if err := s.handlePayload(&p, msg.From.String()); err != nil {
 				slog.Error("Error handling payload", err)
 			}
 		case <-s.quitch:
@@ -50,10 +51,20 @@ func (s *Server) loop() {
 	}
 }
 
-func (s *Server) handlePayload(p *Payload) error {
+func (s *Server) handlePayload(p *Payload, from string) error {
+	//get the peer for stream logic
+	peer, ok := s.peer[from]
+	if !ok {
+		return errors.New("Unknown peer with addr" + from)
+	}
+
 	switch p.Action {
 	case Save:
-		s.StoreData(p.Key, bytes.NewReader(p.Data))
+		slog.Debug("Started to receive payload stream from ", "peer", from, "size", p.Size)
+		s.StoreData(p.Key, io.LimitReader(peer, p.Size))
+		peer.StopStream()
+		slog.Debug("Stopped to receive payload stream from ", "peer", from)
+
 	case Delete:
 	//TODO: delete a file
 	default:
@@ -80,27 +91,32 @@ func (s *Server) bootStrapNetwork() error {
 
 func (s *Server) Broadcast(p *Payload) error {
 	peers := []io.Writer{}
-
 	buf := new(bytes.Buffer)
-
 	for _, peer := range s.peer {
 		if peer.IsOutbound() {
 			peers = append(peers, peer)
 		}
 	}
+	if len(peers) == 0 {
+		return nil
+	}
 
 	//using the multi writer
 	mw := io.MultiWriter(peers...)
 
+	//broad cast the payload
+	mw.Write([]byte{p2p.NonStreamingMode})
 	err := gob.NewEncoder(buf).Encode(p)
 
 	if err != nil {
-		slog.Error("Error in broadcast", err)
+		slog.Warn("Error Encoding Payload", err)
+		return err
 	}
+	n, err := mw.Write(buf.Bytes())
 
-	gob.NewEncoder(mw).Encode(buf.Bytes())
+	slog.Info("Broadcasted to peers", "source", len(buf.Bytes()), "sent", n)
 
-	return nil
+	return err
 }
 
 func (s *Server) StoreData(key string, r io.Reader) error {
@@ -115,13 +131,41 @@ func (s *Server) StoreData(key string, r io.Reader) error {
 	p := Payload{
 		Action: Save,
 		Key:    key,
-		Data:   buf.Bytes(),
+		Size:   int64(buf.Len()),
 	}
 
 	slog.Debug("created payload", "payload", p)
 
 	//share stuff with other nodes
-	return s.Broadcast(&p)
+	err := s.Broadcast(&p)
+
+	if err != nil {
+		slog.Error("Error sending payload", err)
+	}
+
+	for _, peer := range s.peer {
+		if peer.IsOutbound() {
+
+			slog.Debug("Started writing to peers", "data", buf.Bytes())
+
+			_, err := peer.Write([]byte{p2p.StreamingMode})
+
+			if err != nil {
+				slog.Error("Error Writing Stream Mode", err)
+				return err
+			}
+
+			n, err := peer.Write(buf.Bytes())
+
+			if err != nil {
+				slog.Debug("err", err)
+				return err
+			}
+			slog.Info("Wrote to peers", "bytes", n)
+		}
+	}
+
+	return err
 }
 
 func (s *Server) OnPeer(p p2p.Peer) error {

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"dist-store/p2p"
 	"log"
-	"log/slog"
+	// "log/slog"
 	"time"
 )
 
@@ -35,10 +35,14 @@ func makeServer(listenAddr, root string, nodes ...string) *Server {
 }
 
 func main() {
-	slog.SetLogLoggerLevel(slog.LevelDebug)
+	// slog.SetLogLoggerLevel(slog.LevelDebug)
 
+	//main server
 	s1 := makeServer(":3000", ":3000_dir", "")
+
+	//secondary will connect to main
 	s2 := makeServer(":4000", ":4000_dir", ":3000")
+
 	go func() {
 		log.Fatal(s1.Start())
 	}()

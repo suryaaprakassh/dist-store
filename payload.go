@@ -12,5 +12,5 @@ const (
 type Payload struct {
 	Action Action
 	Key    string
-	Data   []byte
+	Size   int64
 }
